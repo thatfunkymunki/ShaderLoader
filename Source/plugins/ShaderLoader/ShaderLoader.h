@@ -49,12 +49,16 @@ public:
 	///////////////////////////////////////////////////
 	
 	FFResult SetParameter(const SetParameterStruct* pParam);
+	FFResult SetFloatParameter(unsigned int dwIndex, float value);
 	FFResult GetParameter(DWORD dwIndex);
 	FFResult ProcessOpenGL(ProcessOpenGLStruct* pGL);
 	FFResult InitGL(const FFGLViewportStruct *vp);
 	FFResult DeInitGL();
 
 	DWORD GetInputStatus(DWORD dwIndex);
+	float GetFloatParameter(unsigned int dwIndex);
+	char * GetTextParameter(unsigned int index);
+	FFResult SetTextParameter(unsigned int index, const char * value);
 	char * GetParameterDisplay(DWORD dwIndex);
 
 	///////////////////////////////////////////////////
@@ -169,6 +173,7 @@ protected:
 	double GetCounter();
 	HMODULE GetCurrentModule();
 	bool AddModulePath(const char *filename, char *filepath);
+	GLhandleARB compileShader(const char * vtxProgram, const char * fragProgram);
 	bool LoadShaderFile(const char *path);
 	bool LoadShader(std::string shaderString);
 	bool WritePathToRegistry(const char *filepath, const char *subkey, const char *valuename);

@@ -144,6 +144,7 @@
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <AdditionalIncludeDirectories>..\..\source\lib\ffgl\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ExceptionHandling>Async</ExceptionHandling>
     </ClCompile>
     <Link>
       <ModuleDefinitionFile>FFGLPlugins.def</ModuleDefinitionFile>

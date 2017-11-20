@@ -134,7 +134,7 @@ void main()
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //  Constructor and destructor
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-ShaderLoader::ShaderLoader():CFreeFrameGLPlugin()
+ShaderLoader::ShaderLoader():CFreeFrameGLPlugin(),m_initResources(1),m_inputTextureLocation(1)
 {
 	HMODULE module;
 	char path[MAX_PATH];
@@ -144,9 +144,9 @@ ShaderLoader::ShaderLoader():CFreeFrameGLPlugin()
 	FILE* pCout; // should really be freed on exit 
 	AllocConsole();
 	freopen_s(&pCout, "CONOUT$", "w", stdout); 
-	printf("Shader Loader Vers 1.004\n");
+	printf("Shader Loader Vers 2.0\n");
 	printf("GLSL version [%s]\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
-	
+	_CrtSetDebugFillThreshold(0);
 
 	// Input properties allow for no texture or for two textures
 	SetMinInputs(1);
@@ -167,7 +167,7 @@ ShaderLoader::ShaderLoader():CFreeFrameGLPlugin()
 	SetParamInfo(FFPARAM_GREEN,         "Green",         FF_TYPE_STANDARD, 0.5f); m_UserGreen = 0.5f;
 	SetParamInfo(FFPARAM_BLUE,          "Blue",          FF_TYPE_STANDARD, 0.5f); m_UserBlue = 0.5f;
 	SetParamInfo(FFPARAM_ALPHA,         "Alpha",         FF_TYPE_STANDARD, 1.0f); m_UserAlpha = 1.0f;
-
+	
 	//SetMinInputs(1);
 
 	// Find the host executable name
@@ -175,17 +175,9 @@ ShaderLoader::ShaderLoader():CFreeFrameGLPlugin()
 	GetModuleFileNameA(module, path, MAX_PATH);
 	_splitpath_s(path, NULL, 0, NULL, 0, m_HostName, MAX_PATH, NULL, 0);
 	
-	// Isadora and Resolume act on button down.
-	// Isadora activates all parameters on plugin load.
-	// To prevent the file selection dialog pop up on load, allow one cycle for starting.
-	// Magic and default Windows apps react on button-up, so when the dll loads
-	// the parameters are not activated and all is OK.
-	if(strstr(m_HostName, "Avenue") == 0 || strstr(m_HostName, "Arena") == 0 || strstr(m_HostName, "Isadora") == 0) {
-		bStarted = false;
-	}
-	else {
-		bStarted = true;
-	}
+	
+
+	bStarted = true;
 
 	// Set defaults
 	SetDefaults();
@@ -226,6 +218,7 @@ FFResult ShaderLoader::InitGL(const FFGLViewportStruct *vp)
 	// Try to get a shader path from the registry
 	// This path will be used on startup if there is no shader name in the entry field
 	ReadPathFromRegistry(m_ShaderPath, "Software\\Leading Edge\\FFGLshaderloader", "Filepath");
+	bInitialized = false;
 
 	return FF_SUCCESS;
 }
@@ -275,7 +268,6 @@ FFResult ShaderLoader::ProcessOpenGL(ProcessOpenGLStruct *pGL)
 	time_t datime;
 	struct tm tmbuff;
 
-	bStarted = true; // Let the parameters know it has started
 
 	// Check for context loss
 	HGLRC ctx = wglGetCurrentContext();
@@ -294,7 +286,7 @@ FFResult ShaderLoader::ProcessOpenGL(ProcessOpenGLStruct *pGL)
 		// if(strstr(m_HostName, "Isadora") != 0) {
 			float vpdim[4];
 			glGetFloatv(GL_VIEWPORT, vpdim);
-			printf("Viewport = %dx%d (%dx%d)\n", (int)m_vpWidth, (int)m_vpHeight, (int)vpdim[2], (int)vpdim[3]);
+		//	printf("Viewport = %dx%d (%dx%d)\n", (int)m_vpWidth, (int)m_vpHeight, (int)vpdim[2], (int)vpdim[3]);
 			m_vpWidth  = vpdim[2];
 			m_vpHeight = vpdim[3];
 		// }
@@ -593,7 +585,7 @@ FFResult ShaderLoader::ProcessOpenGL(ProcessOpenGLStruct *pGL)
 	} // endif bInitialized
 
 	// Check to see if the user has selected another shader
-	if(CheckSpoutPanel()) {
+	if(true) {
 		
 		// Split out the file name
 		_splitpath_s(m_ShaderPath, NULL, NULL, NULL, NULL, filename, MAX_PATH, NULL, 0);
@@ -702,8 +694,230 @@ DWORD ShaderLoader::GetInputStatus(DWORD dwIndex)
 }
 
 
+float ShaderLoader::GetFloatParameter(unsigned int dwIndex) {
+	float retValue = 0.0;
+	switch (dwIndex) {
+	case FFPARAM_SPEED:
+		retValue = m_UserSpeed;
+		return retValue;
 
-FFResult ShaderLoader::GetParameter(DWORD dwIndex)
+	case FFPARAM_MOUSEX:
+		retValue = m_UserMouseX;
+		return retValue;
+
+	case FFPARAM_MOUSEY:
+		retValue = m_UserMouseY;
+		return retValue;
+
+	case FFPARAM_MOUSELEFTX:
+		retValue = m_UserMouseLeftX;
+		return retValue;
+
+	case FFPARAM_MOUSELEFTY:
+		retValue = m_UserMouseLeftY;
+		return retValue;
+
+	case FFPARAM_RED:
+		retValue = m_UserRed;
+		return retValue;
+
+	case FFPARAM_GREEN:
+		retValue = m_UserGreen;
+		return retValue;
+
+	case FFPARAM_BLUE:
+		retValue = m_UserBlue;
+		return retValue;
+
+	case FFPARAM_ALPHA:
+		retValue = m_UserAlpha;
+		return retValue;
+
+	default:
+		return FF_FAIL;
+	}
+}
+char* ShaderLoader::GetTextParameter(unsigned int index) {
+	switch (index) {
+		case FFPARAM_FILENAME:
+			return m_UserInput;
+			break;
+	}
+	return (char*)FF_FAIL;
+}
+FFResult ShaderLoader::SetTextParameter(unsigned int index, const char *value) {
+	char filename[MAX_PATH];
+	char filepath[MAX_PATH];
+	bool bUserEntry = false;
+	int firstLength, secondLength;
+	switch (index) {
+		case FFPARAM_FILENAME:
+			if (value && strlen(value) > 0) {
+				// Is it a new input ?
+				if (strcmp(m_UserInput, value) != 0) {
+					// Copy to global input
+					strcpy_s(m_UserInput, MAX_PATH, value);
+
+					// Remove leading and trailing quotes
+					PathUnquoteSpacesA(m_UserInput);
+
+					// Copy to name and path strings for path checks
+					strcpy_s(filepath, MAX_PATH, m_UserInput); // could be just a name
+					strcpy_s(filename, MAX_PATH, m_UserInput); // could be a full path
+					firstLength = strlen(filename);
+
+					// Could be a full path or just a name so strip out the name
+					PathStripPathA(filename); // Removes the path portion of a fully qualified path and file
+					secondLength = strlen(filename);
+
+					if (firstLength != secondLength) {
+						// path has been stripped and we now have a filename
+						// if there is no extension, add one
+						// If there is already a file name extension present, no extension will be added.
+						PathAddExtension(filename, ".txt");
+						PathAddExtension(filepath, ".txt");
+					}
+					else { 	// Just a name was entered 
+							// if there is no extension, add one
+						PathAddExtension(filename, ".txt");
+						PathAddExtension(filepath, ".txt");
+						// Add the dll path assuming the shader is in the same folder
+						AddModulePath(filename, filepath);
+					}
+
+					// Now we have filename and filepath so set the user entries
+					strcpy_s(m_UserShaderPath, MAX_PATH, filepath);
+					strcpy_s(m_UserShaderName, MAX_PATH, filename);
+
+					// On load, try to load a shader from the path entered
+					// This is a one-off event so will not be done again
+					if ((bInitialized == false) && (m_UserShaderPath[0] > 0)) {
+					//if( (m_UserShaderPath[0] > 0) && strcmp(m_UserShaderPath, m_ShaderPath) != 0){
+						strcpy_s(m_ShaderPath, MAX_PATH, m_UserShaderPath); // set global path
+						//strcpy_s(m_ShaderName, 256, filename);
+						bInitialized = LoadShaderFile(m_ShaderPath);
+					}
+					
+				}
+			}
+			else {
+				// Nothing entered in the name field
+				m_UserShaderPath[0] = 0; // important for FFPARAM_SELECT below
+				m_UserShaderName[0] = 0;
+				// Try to load a shader from the global path obtained from the registry on load
+				// This is a one-off event so will not be done again
+				if (!bInitialized && m_ShaderPath[0]) {
+					if (LoadShaderFile(m_ShaderPath)) {
+					//	_splitpath_s(m_ShaderPath, NULL, NULL, NULL, NULL, filename, MAX_PATH, NULL, 0);
+					//	strcpy_s(m_ShaderName, 256, filename);
+						bInitialized = true;
+					}
+				}
+			}
+			return FF_SUCCESS;
+
+			break;
+		}
+	return FF_FAIL;
+
+
+
+}
+
+FFResult ShaderLoader::SetFloatParameter(unsigned int dwIndex, float value) {
+	switch (dwIndex) {
+	case FFPARAM_UPDATE:
+		if (value) {
+			// Is there any name entered ?
+			if (!m_UserShaderPath[0]) {
+				SelectSpoutPanel("No file name entered");
+			}
+			else {
+				// Is it different to the current shader path ?
+				if (strcmp(m_ShaderPath, m_UserShaderPath) != 0) {
+					// Yes so load the shader file
+					strcpy_s(m_ShaderPath, MAX_PATH, m_UserShaderPath);
+					bInitialized = LoadShaderFile(m_ShaderPath); // m_ShaderName is now set by LoadShaderFile
+				}
+			}
+		}
+		break;
+
+
+		// SpoutPanel shader file selection
+		// or else it pops up when the plugin loads
+	case FFPARAM_SELECT:
+		if (value) {
+			if (m_UserShaderPath[0]) {
+				SelectSpoutPanel("Shader Name entered\nClear the entry first");
+			}
+			else {
+				SelectSpoutPanel("/FILEOPEN"); // Open the common file dialog
+			}
+		}
+		break;
+
+		// Activate an editor - based on the file association for a text file.
+	case FFPARAM_EDIT:
+		if (value) {
+			if (m_ShaderPath[0]) {
+				OpenEditor(m_ShaderPath);
+			}
+		}
+		break;
+
+		// Reload an edited shader
+	case FFPARAM_RELOAD:
+		if (value) {
+			if (m_ShaderPath[0]) {
+				bInitialized = LoadShaderFile(m_ShaderPath);
+			}
+		}
+		break;
+	case FFPARAM_SPEED:
+		m_UserSpeed = value;
+		break;
+
+	case FFPARAM_MOUSEX:
+		m_UserMouseX = value;
+		break;
+
+	case FFPARAM_MOUSEY:
+		m_UserMouseY = value;
+		break;
+
+	case FFPARAM_MOUSELEFTX:
+		m_UserMouseLeftX = value;
+		break;
+
+	case FFPARAM_MOUSELEFTY:
+		m_UserMouseLeftY = value;
+		break;
+
+	case FFPARAM_RED:
+		m_UserRed = value;
+		break;
+
+	case FFPARAM_GREEN:
+		m_UserGreen = value;
+		break;
+
+	case FFPARAM_BLUE:
+		m_UserBlue = value;
+		break;
+
+	case FFPARAM_ALPHA:
+		m_UserAlpha = value;
+		break;
+
+	default:
+		return FF_FAIL;
+	}
+
+	return FF_SUCCESS;
+
+}
+/*FFResult ShaderLoader::GetParameter(DWORD dwIndex)
 {
 	FFResult dwRet;
 
@@ -749,12 +963,9 @@ FFResult ShaderLoader::GetParameter(DWORD dwIndex)
 			return FF_FAIL;
 
 	}
-}
+}*/
 
-//
-// bStarted is set as soon as ProcessOpenGL is called
-//
-FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
+/*FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 {
 	char filename[MAX_PATH];
 	char filepath[MAX_PATH];
@@ -807,7 +1018,7 @@ FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 
 						// On load, try to load a shader from the path entered
 						// This is a one-off event so will not be done again
-						if(!bInitialized && m_UserShaderPath[0] > 0 && !bStarted) {
+						if(!bInitialized && m_UserShaderPath[0] > 0) {
 							strcpy_s(m_ShaderPath, MAX_PATH, m_UserShaderPath); // set global path
 							bInitialized = LoadShaderFile(m_ShaderPath); // m_ShaderName is now set by LoadShaderFile
 						}
@@ -819,7 +1030,7 @@ FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 					m_UserShaderName[0] = 0;
 					// Try to load a shader from the global path obtained from the registry on load
 					// This is a one-off event so will not be done again
-					if(!bInitialized && m_ShaderPath[0] && !bStarted) {
+					if(!bInitialized && m_ShaderPath[0]) {
 						if(LoadShaderFile(m_ShaderPath)) {
 							bInitialized = true;
 							// m_ShaderName is now set by LoadShaderFile
@@ -830,7 +1041,7 @@ FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 
 			// Update user entered name
 			case FFPARAM_UPDATE :
-				if (pParam->NewParameterValue.UIntValue && bStarted) { 
+				if (pParam->NewParameterValue.UIntValue) { 
 					// Is there any name entered ?
 					if(!m_UserShaderPath[0]) {
 						SelectSpoutPanel("No file name entered");
@@ -848,10 +1059,9 @@ FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 
 
 			// SpoutPanel shader file selection
-			// This is a button, so refer to bStarted flag
 			// or else it pops up when the plugin loads
 			case FFPARAM_SELECT :
-				if (pParam->NewParameterValue.UIntValue && bStarted) {
+				if (pParam->NewParameterValue.UIntValue) {
 					if(m_UserShaderPath[0]) {
 						SelectSpoutPanel("Shader Name entered\nClear the entry first");
 					}
@@ -863,7 +1073,7 @@ FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 
 			// Activate an editor - based on the file association for a text file.
 			case FFPARAM_EDIT :
-				if (pParam->NewParameterValue.UIntValue && bStarted) {
+				if (pParam->NewParameterValue.UIntValue) {
 					if(m_ShaderPath[0]) {
 						OpenEditor(m_ShaderPath);
 					}
@@ -872,7 +1082,7 @@ FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 
 			// Reload an edited shader
 			case FFPARAM_RELOAD :
-				if (pParam->NewParameterValue.UIntValue && bStarted) { 
+				if (pParam->NewParameterValue.UIntValue) { 
 					if(m_ShaderPath[0]) {
 						bInitialized = LoadShaderFile(m_ShaderPath);
 					}
@@ -924,7 +1134,8 @@ FFResult ShaderLoader::SetParameter(const SetParameterStruct* pParam)
 	}
 
 	return FF_FAIL;
-}
+}*/
+
 
 
 bool ShaderLoader::LoadShaderFile(const char *ShaderPath)
@@ -1018,11 +1229,20 @@ bool ShaderLoader::LoadShaderFile(const char *ShaderPath)
 		}
 	
 		// initialize gl shader
-	//	m_shader.SetExtensions(&m_extensions);
+		//m_shader.SetExtensions(&m_extensions);
+	
+
 		if (!m_shader.Compile(vertexShaderCode, shaderString.c_str())) {
-			SelectSpoutPanel("Shader compile error");
+			//SelectSpoutPanel("Shader compile error");
 			return false;
 		}
+		if (!m_shader.Compile(vertexShaderCode, shaderString.c_str())) {
+			//SelectSpoutPanel("Shader compile error");
+			return false;
+		}
+
+		
+
 		else {
 			// activate our shader
 			bool success = false;
